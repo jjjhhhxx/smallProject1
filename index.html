@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>老人摘要查看</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 30px;
+            display: none;
+        }
+        .result-section {
+            margin-bottom: 25px;
+            padding: 20px;
+            border-left: 4px solid #007bff;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .result-section h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 18px;
+        }
+        .result-section p {
+            margin: 10px 0;
+            line-height: 1.6;
+            color: #666;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>老人摘要查看</h1>
+        
+        <div class="input-group">
+            <label for="elderId">老人ID:</label>
+            <input type="number" id="elderId" min="1" placeholder="请输入老人ID" value="1">
+        </div>
+        
+        <div class="input-group">
+            <label for="date">日期:</label>
+            <input type="date" id="date" placeholder="请选择日期">
+        </div>
+        
+        <button onclick="getSummary()">查看摘要</button>
+        <button onclick="getSummary(true)">强制重新生成</button>
+        
+        <div id="result" class="result">
+            <div class="result-section">
+                <h3>摘要</h3>
+                <p id="summary"></p>
+            </div>
+            
+            <div class="result-section">
+                <h3>身体状况</h3>
+                <p id="physicalStatus"></p>
+            </div>
+            
+            <div class="result-section">
+                <h3>心理需求</h3>
+                <p id="psychologicalNeeds"></p>
+            </div>
+            
+            <div class="result-section">
+                <h3>建议</h3>
+                <p id="advice"></p>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">
+            正在获取摘要...
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+    </div>
+
+    <script>
+        // 设置默认日期为今天
+        document.getElementById('date').valueAsDate = new Date();
+        
+        async function getSummary(force = false) {
+            const elderId = document.getElementById('elderId').value;
+            const date = document.getElementById('date').value;
+            
+            if (!elderId || !date) {
+                showError('请填写老人ID和日期');
+                return;
+            }
+            
+            if (elderId <= 0) {
+                showError('老人ID必须是正整数');
+                return;
+            }
+            
+            hideResult();
+            hideError();
+            showLoading();
+            
+            try {
+                const params = new URLSearchParams({
+                    elder_id: elderId,
+                    date: date,
+                    force: force
+                });
+                
+                const response = await fetch(`http://127.0.0.1:8000/parse/summary?${params}`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // 显示结果
+                document.getElementById('summary').textContent = data.summary || '暂无摘要';
+                document.getElementById('physicalStatus').textContent = data.physical_status || '暂无身体状况信息';
+                document.getElementById('psychologicalNeeds').textContent = data.psychological_needs || '暂无心理需求信息';
+                document.getElementById('advice').textContent = data.advice || '暂无建议';
+                
+                showResult();
+                
+            } catch (error) {
+                showError('获取摘要失败: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        function showResult() {
+            document.getElementById('result').style.display = 'block';
+        }
+        
+        function hideResult() {
+            document.getElementById('result').style.display = 'none';
+        }
+        
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+        
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+        
+        // 回车键触发查询
+        document.getElementById('elderId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                getSummary();
+            }
+        });
+        
+        document.getElementById('date').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                getSummary();
+            }
+        });
+    </script>
+</body>
+</html>

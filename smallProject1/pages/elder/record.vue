@@ -1,46 +1,43 @@
 <template>
   <view style="padding: 24px;">
-    <view style="font-size: 20px; font-weight: 600; margin-bottom: 16px;">
-      老人录音
-    </view>
+    <!-- 去掉“老人录音”标题 -->
 
-    <!-- 按住录音：touchstart；松开停止：touchend -->
     <button
       type="primary"
       :disabled="uploading"
       @touchstart="startRecord"
       @touchend="stopRecord"
       @touchcancel="stopRecord"
-      style="height: 72px; font-size: 20px;"
+      style="
+        height: 96px;
+        line-height: 96px;
+        font-size: 26px;
+        font-weight: 700;
+        border-radius: 16px;
+      "
     >
-      {{ recording ? "松开结束并上传" : "按住说话" }}
+      {{ recording ? "松开结束" : "按住录音" }}
     </button>
 
-    <view style="margin-top: 16px; font-size: 16px;">
-      状态：{{ status }}
-    </view>
+    <!-- 松开后只显示两种结果：录音完成 / 录音失败 -->
+    <view v-if="status" style="margin-top: 20px; font-size: 22px; font-weight: 700; text-align: center;">
+  {{ status }}
+</view>
 
-    <view v-if="lastTempFilePath" style="margin-top: 8px; font-size: 12px; color: #666;">
-      文件：{{ lastTempFilePath }}
-    </view>
-
-    <view v-if="result" style="margin-top: 12px; font-size: 14px;">
-      返回：{{ result }}
-    </view>
   </view>
 </template>
 
 <script setup>
 import { ref, onMounted } from "vue";
 
-const API_BASE = "http://localhost:8000"; // ⚠️ 真机不能用 localhost，后面改成你的服务器地址
-const elderId = 123; // MVP 先写死
+const API_BASE = "http://localhost:8000";
+const elderId = 123;
 
 const recording = ref(false);
 const uploading = ref(false);
-const status = ref("idle");
-const result = ref("");
-const lastTempFilePath = ref("");
+
+// ✅ 只保留两种显示：录音完成 / 录音失败（其他阶段不显示）
+const status = ref("");
 
 let recorder = null;
 
@@ -48,79 +45,74 @@ onMounted(() => {
   recorder = uni.getRecorderManager();
 
   recorder.onStart(() => {
-    status.value = "录音中...";
+    // 录音中不展示任何文案（符合你“松开后才提示”的需求）
   });
 
   recorder.onStop((res) => {
-    // ✅ 这里产生“音频文件”：系统录音后生成临时文件路径
     const tempPath = res.tempFilePath;
-    lastTempFilePath.value = tempPath;
-    status.value = "录音结束，准备上传...";
-
+    // 松开后先不显示“上传中”，只等最终结果
     uploadAudio(tempPath);
   });
 
-  recorder.onError((err) => {
+  recorder.onError(() => {
     recording.value = false;
-    status.value = "录音失败：" + JSON.stringify(err);
+    uploading.value = false;
+    status.value = "录音失败";
   });
 });
 
 function startRecord() {
   if (uploading.value) return;
 
-  status.value = "开始录音...";
-  result.value = "";
-  lastTempFilePath.value = "";
+  status.value = "";          // 每次开始录音先清空提示
+  recording.value = true;
 
-  // 开始录音（会触发权限弹窗）
   recorder.start({
     duration: 60 * 1000,
     sampleRate: 16000,
     numberOfChannels: 1,
     encodeBitRate: 32000,
-    format: "wav", // 确保后端允许 wav
+    format: "wav",
   });
-
-  recording.value = true;
 }
 
 function stopRecord() {
   if (!recording.value) return;
-  status.value = "停止录音...";
   recording.value = false;
-
-  // 触发 onStop 回调，拿到 tempFilePath
   recorder.stop();
 }
 
 function uploadAudio(filePath) {
   uploading.value = true;
-  status.value = "上传中...";
 
   uni.uploadFile({
     url: `${API_BASE}/listen/upload`,
     filePath,
-    name: "audio_file", // ✅ 必须和后端一致
+    name: "audio_file",
     formData: {
       elder_id: String(elderId),
     },
     success: (res) => {
       uploading.value = false;
 
-      // res.data 是字符串
+      // 只要能走到 success，就认为“录音完成”（包含上传完成）
+      // 如果你希望后端返回特定字段才算成功，也可以在这里再做判断
       try {
-        const data = JSON.parse(res.data);
-        result.value = JSON.stringify(data);
-        status.value = "上传成功，record_id=" + data.record_id;
+        const data = JSON.parse(res.data || "{}");
+        // 可选：严格判断后端是否真的成功（比如有 record_id）
+        if (data && (data.record_id || data.ok === true)) {
+          status.value = "录音完成";
+        } else {
+          // 后端返回了非预期内容，也按失败处理（更符合“只两种信息”）
+          status.value = "录音失败";
+        }
       } catch (e) {
-        result.value = res.data;
-        status.value = "上传成功（但返回不是 JSON）";
+        status.value = "录音失败";
       }
     },
-    fail: (err) => {
+    fail: () => {
       uploading.value = false;
-      status.value = "上传失败：" + JSON.stringify(err);
+      status.value = "录音失败";
     },
   });
 }

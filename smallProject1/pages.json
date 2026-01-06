@@ -1,11 +1,14 @@
 {
 	"pages": [ 
-		{
+
+	{
 			"path": "pages/elder/record",
 			"style": {
-			  "navigationBarTitleText": "老人录音"
+			  "navigationBarTitleText": ""
 			}
 		},
+		
+		
 		{
 			"path": "pages/index/index",
 			"style": {
