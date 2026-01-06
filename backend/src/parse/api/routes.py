@@ -39,6 +39,9 @@ class SummaryResponse(BaseModel):
     elder_id: int
     date: str
     summary: str
+    physical_status: str
+    psychological_needs: str
+    advice: str
     message: str
 
 
@@ -181,13 +184,16 @@ async def get_summary(
             logger.error(f"摘要生成失败: elder_id={elder_id}, date={date}, error={error}")
             raise HTTPException(
                 status_code=502,
-                detail=f"LLM 调用失败: {error}",
+                detail="LLM调用失败",
             )
         
         return {
             "elder_id": result.elder_id,
             "date": result.date,
             "summary": result.summary,
+            "physical_status": result.physical_status,
+            "psychological_needs": result.psychological_needs,
+            "advice": result.advice,
             "message": result.message,
         }
         
@@ -197,6 +203,6 @@ async def get_summary(
         logger.exception(f"摘要接口异常: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"读取文件异常: {str(e)}",
+            detail="读取文件异常",
         )
 

@@ -3,45 +3,55 @@
 负责读取文本、拼接内容、调用 LLM 生成摘要、保存结果。
 """
 
+import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from parse.interfaces.llm_interface import LLMInterface
+from typing import Any
+
+def _to_text(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, list):
+        items = [str(x).strip() for x in v if str(x).strip()]
+        if not items:
+            return ""
+        # 拼成 markdown 的 bullet，前端直接展示也好看
+        return "- " + "\n- ".join(items)
+    # 兜底：避免再炸
+    return str(v).strip()
 
 logger = logging.getLogger(__name__)
 
 # 最大拼接字符数
 MAX_CHARS = 30000
 
-# 摘要系统提示词
+# 摘要系统提示词（要求输出 JSON 格式）
 SUMMARY_SYSTEM_PROMPT = """你是一位专业的老人关怀助手。你需要根据老人的语音转写文本，生成结构化摘要。
 
-请严格按照以下格式输出摘要：
+请严格按照以下 JSON 格式输出，不要输出任何 Markdown 标题、代码块标记或其他解释文字，只输出纯 JSON 对象：
 
-## 讲话内容摘要
-- （要点1）
-- （要点2）
-- ...
-
-## 可能的身体状况
-（基于文本推测老人可能的身体状况。必须使用"可能"、"疑似"、"需核实"、"无法诊断"等措辞，不能当作医疗诊断。如无相关信息，写"无明显异常提及，待确认"）
-
-## 可能的心理需求
-（推测老人可能的心理需求。必须使用"可能"、"推测"、"需核实"等措辞。如无相关信息，写"待确认"）
-
-## 建议子女下一步
-- （可执行的建议1）
-- （可执行的建议2，必要时建议就医/联系家人等）
-- ...
+{
+  "summary": "讲话内容摘要（要点列表，用中文描述）",
+  "physical_status": "可能的身体状况（必须使用'可能'、'疑似'、'需核实'、'无法诊断'等措辞，不能当作医疗诊断。如无相关信息，写'无明显异常提及，待确认'）",
+  "psychological_needs": "可能的心理需求（必须使用'可能'、'推测'、'需核实'等措辞。如无相关信息，写'待确认'）",
+  "advice": "建议子女下一步（可执行的建议，必要时建议就医/联系家人等，用中文描述）"
+}
 
 输出要求：
-1. 使用中文
-2. 分点清晰
-3. 不要编造原文没有的信息
-4. 不确定的内容写"待确认"
-5. 身体状况和心理需求的描述必须谨慎，避免下定论"""
+1. 只输出 JSON 对象，不要包裹在 ```json 代码块中
+2. 不要输出 Markdown 标题（如 ## 讲话内容摘要）
+3. 使用中文
+4. 不要编造原文没有的信息
+5. 不确定的内容写"待确认"
+6. 身体状况和心理需求的描述必须谨慎，避免下定论
+7. 四个字段的值必须是字符串，不允许输出 JSON 数组；如果需要分点，请在字符串里用换行和 '-' 表示"""
 
 
 @dataclass
@@ -51,8 +61,10 @@ class SummaryResult:
     elder_id: int
     date: str
     summary: str
+    physical_status: str
+    psychological_needs: str
+    advice: str
     message: str
-    from_cache: bool = False
 
 
 class SummaryService:
@@ -98,19 +110,22 @@ class SummaryService:
         # 构建路径
         context_dir = self._context_root / str(elder_id) / date
         summary_dir = self._summary_root / str(elder_id) / date
-        summary_path = summary_dir / "_summary.txt"
+        summary_path = summary_dir / "_summary.json"
         
         # 检查缓存
-        if not force and self._has_valid_cache(summary_path):
-            cached_summary = summary_path.read_text(encoding="utf-8")
-            logger.info(f"使用缓存摘要: {summary_path}")
-            return SummaryResult(
-                elder_id=elder_id,
-                date=date,
-                summary=cached_summary,
-                message="from cache",
-                from_cache=True,
-            ), None
+        if not force:
+            cached_data = self._load_cached_summary(summary_path)
+            if cached_data is not None:
+                logger.info(f"使用缓存摘要: {summary_path}")
+                return SummaryResult(
+                    elder_id=elder_id,
+                    date=date,
+                    summary=cached_data.get("summary", ""),
+                    physical_status=cached_data.get("physical_status", ""),
+                    psychological_needs=cached_data.get("psychological_needs", ""),
+                    advice=cached_data.get("advice", ""),
+                    message="cached",
+                ), None
         
         # 读取并拼接文本
         merged_text, file_count = self._read_and_merge_texts(context_dir)
@@ -121,6 +136,9 @@ class SummaryService:
                 elder_id=elder_id,
                 date=date,
                 summary="",
+                physical_status="",
+                psychological_needs="",
+                advice="",
                 message="no files",
             ), None
         
@@ -136,31 +154,98 @@ class SummaryService:
                 elder_id=elder_id,
                 date=date,
                 summary="",
+                physical_status="",
+                psychological_needs="",
+                advice="",
                 message="llm error",
             ), error_msg
         
-        summary_text = llm_result.content or ""
+        # 解析 LLM 返回的 JSON
+        llm_content = llm_result.content or ""
+        parsed_data = self._parse_llm_json(llm_content)
         
-        # 保存摘要
-        self._save_summary(summary_path, summary_text)
+        if parsed_data is None:
+            error_msg = "LLM 返回的不是有效的 JSON 格式"
+            logger.error(f"{error_msg}: {llm_content[:200]}")
+            return SummaryResult(
+                elder_id=elder_id,
+                date=date,
+                summary="",
+                physical_status="",
+                psychological_needs="",
+                advice="",
+                message="llm error",
+            ), error_msg
+        
+        # 归一化：确保所有字段都是字符串（兼容 LLM 返回 list 的情况）
+        normalized = {
+            "summary": _to_text(parsed_data.get("summary")),
+            "physical_status": _to_text(parsed_data.get("physical_status")),
+            "psychological_needs": _to_text(parsed_data.get("psychological_needs")),
+            "advice": _to_text(parsed_data.get("advice")),
+        }
+        
+        # 保存归一化后的摘要到 JSON 文件
+        self._save_summary_json(summary_path, normalized)
         logger.info(f"摘要已保存: {summary_path}")
         
         return SummaryResult(
             elder_id=elder_id,
             date=date,
-            summary=summary_text,
+            summary=normalized["summary"],
+            physical_status=normalized["physical_status"],
+            psychological_needs=normalized["psychological_needs"],
+            advice=normalized["advice"],
             message="generated",
         ), None
     
-    def _has_valid_cache(self, summary_path: Path) -> bool:
-        """检查摘要缓存是否存在且有效"""
+    def _load_cached_summary(self, summary_path: Path) -> Optional[Dict[str, str]]:
+        """
+        加载缓存的摘要 JSON 文件，并归一化所有字段为字符串
+        
+        Args:
+            summary_path: 摘要 JSON 文件路径
+            
+        Returns:
+            Optional[Dict[str, str]]: 归一化后的数据，如果文件不存在或解析失败则返回 None
+        """
         if not summary_path.exists():
-            return False
+            return None
         
         try:
-            return summary_path.stat().st_size > 0
-        except OSError:
-            return False
+            if summary_path.stat().st_size == 0:
+                return None
+            
+            content = summary_path.read_text(encoding="utf-8")
+            data = json.loads(content)
+            
+            # 验证必需字段
+            required_fields = ["summary", "physical_status", "psychological_needs", "advice"]
+            if not all(field in data for field in required_fields):
+                logger.warning(f"缓存文件缺少必需字段: {summary_path}")
+                return None
+            
+            # 归一化：确保所有字段都是字符串（兼容旧缓存中存的是 list 的情况）
+            normalized = {
+                "summary": _to_text(data.get("summary")),
+                "physical_status": _to_text(data.get("physical_status")),
+                "psychological_needs": _to_text(data.get("psychological_needs")),
+                "advice": _to_text(data.get("advice")),
+            }
+            
+            # 检查是否需要修复旧缓存（如果原数据中有 list 类型）
+            needs_fix = any(
+                isinstance(data.get(f), list) for f in required_fields
+            )
+            if needs_fix:
+                logger.info(f"修复旧缓存文件（包含 list 字段）: {summary_path}")
+                self._save_summary_json(summary_path, normalized)
+            
+            return normalized
+            
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"读取缓存文件失败: {summary_path}, error: {e}")
+            return None
     
     def _read_and_merge_texts(self, context_dir: Path) -> Tuple[str, int]:
         """
@@ -240,17 +325,72 @@ class SummaryService:
         
         return txt_files
     
-    def _save_summary(self, summary_path: Path, summary_text: str) -> None:
+    def _parse_llm_json(self, content: str) -> Optional[Dict[str, Any]]:
         """
-        保存摘要到文件
+        解析 LLM 返回的 JSON 内容
+        
+        尝试从输出中提取第一个 {...} 作为 JSON。
         
         Args:
-            summary_path: 摘要文件路径
-            summary_text: 摘要内容
+            content: LLM 返回的原始内容
+            
+        Returns:
+            Optional[Dict[str, Any]]: 解析后的 JSON 数据，解析失败返回 None
+        """
+        if not content:
+            return None
+        
+        # 首先尝试直接解析
+        try:
+            data = json.loads(content)
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+        
+        # 尝试提取第一个 {...} 作为 JSON
+        # 找到第一个 { 的位置
+        start_idx = content.find('{')
+        if start_idx == -1:
+            return None
+        
+        # 从第一个 { 开始，找到匹配的最后一个 }
+        brace_count = 0
+        end_idx = -1
+        for i in range(start_idx, len(content)):
+            if content[i] == '{':
+                brace_count += 1
+            elif content[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i
+                    break
+        
+        if end_idx != -1:
+            json_str = content[start_idx:end_idx + 1]
+            try:
+                data = json.loads(json_str)
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError:
+                pass
+        
+        return None
+    
+    def _save_summary_json(self, summary_path: Path, data: Dict[str, Any]) -> None:
+        """
+        保存摘要到 JSON 文件
+        
+        Args:
+            summary_path: 摘要 JSON 文件路径
+            data: 摘要数据字典
         """
         # 确保父目录存在
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # 写入 UTF-8 编码
-        summary_path.write_text(summary_text, encoding="utf-8")
+        # 写入 UTF-8 编码的 JSON
+        summary_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
