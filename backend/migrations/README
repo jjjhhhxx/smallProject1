@@ -1,0 +1,7 @@
+Generic single-database configuration.
+
+对数据库修改的方法，修改model里的.py文件，改完之后执行以下两条命令即可完成修改
+alembic revision --autogenerate -m "xxx"           （xxx是这次修改的说明，可以任意填写）
+
+
+alembic upgrade head
