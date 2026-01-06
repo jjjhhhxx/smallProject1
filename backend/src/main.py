@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from listen.api.routes import router as listen_router
+from parse.api.routes import router as parse_router
 
 app = FastAPI(
     title="Listen API",
@@ -29,6 +30,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(listen_router)
+app.include_router(parse_router)
 
 
 @app.get("/health")

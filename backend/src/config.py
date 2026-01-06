@@ -25,6 +25,21 @@ ALLOWED_AUDIO_EXTENSIONS: set[str] = {"wav", "mp3", "m4a", "amr"}
 MAX_AUDIO_SIZE_BYTES: int = int(os.getenv("MAX_AUDIO_SIZE_BYTES", 20 * 1024 * 1024))
 
 
+# ========== Parse 模块配置 ==========
+
+# 音频文件根目录（用于转写）
+# 优先读取环境变量 AUDIO_ROOT
+PARSE_AUDIO_ROOT: Path = Path(
+    os.getenv("AUDIO_ROOT", r"D:\project\store\audio")
+).resolve()
+
+# 转写文本输出根目录
+# 优先读取环境变量 CONTEXT_ROOT
+PARSE_CONTEXT_ROOT: Path = Path(
+    os.getenv("CONTEXT_ROOT", r"D:\project\store\context")
+).resolve()
+
+
 # ========== 数据库配置 ==========
 
 DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
