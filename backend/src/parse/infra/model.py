@@ -1,23 +1,50 @@
+from openai import OpenAI
 import os
-import dashscope
 
-dashscope.base_http_api_url = "https://dashscope.aliyuncs.com/api/v1"  # 北京地域
-
-audio_path = os.path.abspath(r"D:\project\store\audio\123\2026-01-06\699285abca2b4d56a24abb69b2892b92.wav")  # 必须是绝对路径
-
-messages = [
-    {"role": "system", "content": [{"text": ""}]},
-    {"role": "user", "content": [{"audio": audio_path}]},
-]
-
-resp = dashscope.MultiModalConversation.call(
+# 初始化OpenAI客户端
+client = OpenAI(
+    # 如果没有配置环境变量，请用阿里云百炼API Key替换：api_key="sk-xxx"
+    # 新加坡和北京地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
     api_key=os.getenv("DASHSCOPE_API_KEY"),
-    model="qwen3-asr-flash",
-    messages=messages,
-    result_format="message",
-    asr_options={"enable_itn": False},
+    # 以下是北京地域base_url，如果使用新加坡地域的模型，需要将base_url替换为：https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
-# 取出转写文本（文档里的响应结构就是这么给的）
-text = resp["output"]["choices"][0]["message"]["content"][0]["text"]
-print(text)
+messages = [{"role": "user", "content": "你是谁"}]
+completion = client.chat.completions.create(
+    model="qwen-flash",
+    messages=messages,
+    # 通过 extra_body 设置 enable_thinking 开启思考过程
+    extra_body={"enable_thinking": True},
+    stream=True,
+    stream_options={
+        "include_usage": True
+    },
+)
+
+reasoning_content = ""  # 完整思考过程
+answer_content = ""  # 完整回复
+is_answering = False  # 是否进入回复阶段
+print("\n" + "=" * 20 + "思考过程" + "=" * 20 + "\n")
+
+for chunk in completion:
+    if not chunk.choices:
+        print("\n" + "=" * 20 + "Token 消耗" + "=" * 20 + "\n")
+        print(chunk.usage)
+        continue
+
+    delta = chunk.choices[0].delta
+
+    # 只收集思考内容
+    if hasattr(delta, "reasoning_content") and delta.reasoning_content is not None:
+        if not is_answering:
+            print(delta.reasoning_content, end="", flush=True)
+        reasoning_content += delta.reasoning_content
+
+    # 收到content，开始进行回复
+    if hasattr(delta, "content") and delta.content:
+        if not is_answering:
+            print("\n" + "=" * 20 + "完整回复" + "=" * 20 + "\n")
+            is_answering = True
+        print(delta.content, end="", flush=True)
+        answer_content += delta.content

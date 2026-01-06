@@ -15,3 +15,6 @@ python-multipart>=0.0.6
 # DashScope SDK (阿里云语音识别)
 dashscope>=1.14.0
 
+# OpenAI Python SDK (用于调用 DashScope LLM)
+openai>=1.0.0
+

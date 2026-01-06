@@ -1,18 +1,21 @@
 """Parse 模块 API 路由
 
-提供触发转写任务的 HTTP 接口。
+提供触发转写任务和摘要生成的 HTTP 接口。
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 
-from config import PARSE_AUDIO_ROOT, PARSE_CONTEXT_ROOT
+from config import PARSE_AUDIO_ROOT, PARSE_CONTEXT_ROOT, PARSE_SUMMARY_ROOT
+from parse.application.summary_service import SummaryService
 from parse.application.transcribe_service import TranscribeService
 from parse.infra.dashscope_asr import DashScopeASR
+from parse.infra.dashscope_llm import DashScopeLLM
 from parse.infra.file_lock import FileLock
 
 logger = logging.getLogger(__name__)
@@ -28,6 +31,19 @@ class TranscribeAllResponse(BaseModel):
     context_root: str
     skipped_existing_txt: bool
     message: str
+
+
+class SummaryResponse(BaseModel):
+    """摘要生成响应"""
+    
+    elder_id: int
+    date: str
+    summary: str
+    message: str
+
+
+# 日期格式正则：YYYY-MM-DD
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _get_lock_path() -> Path:
@@ -107,4 +123,80 @@ async def transcribe_all(background_tasks: BackgroundTasks) -> dict[str, Any]:
         "skipped_existing_txt": True,
         "message": "started",
     }
+
+
+@router.get("/summary", response_model=SummaryResponse)
+async def get_summary(
+    elder_id: int = Query(..., description="老人 ID，必须是正整数", gt=0),
+    date: str = Query(..., description="日期，格式 YYYY-MM-DD"),
+    force: bool = Query(False, description="是否强制重新生成摘要"),
+) -> dict[str, Any]:
+    """
+    生成指定老人在指定日期的摘要
+    
+    - 读取当天所有转写文本
+    - 调用 LLM 生成结构化摘要
+    - 支持缓存复用（force=true 可强制重新生成）
+    
+    Args:
+        elder_id: 老人 ID（正整数）
+        date: 日期（YYYY-MM-DD 格式）
+        force: 是否强制重新生成
+        
+    Returns:
+        SummaryResponse: 摘要结果
+        
+    Raises:
+        400: 参数校验失败
+        500: 读取文件异常
+        502: LLM 调用失败
+    """
+    # 校验日期格式
+    if not DATE_PATTERN.match(date):
+        raise HTTPException(
+            status_code=400,
+            detail=f"日期格式错误，必须为 YYYY-MM-DD，实际为: {date}",
+        )
+    
+    try:
+        # 创建 LLM 服务
+        llm = DashScopeLLM()
+        
+        # 创建摘要服务
+        service = SummaryService(
+            llm=llm,
+            context_root=PARSE_CONTEXT_ROOT,
+            summary_root=PARSE_SUMMARY_ROOT,
+        )
+        
+        # 生成摘要
+        result, error = service.generate_summary(
+            elder_id=elder_id,
+            date=date,
+            force=force,
+        )
+        
+        if error:
+            # LLM 调用失败
+            logger.error(f"摘要生成失败: elder_id={elder_id}, date={date}, error={error}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"LLM 调用失败: {error}",
+            )
+        
+        return {
+            "elder_id": result.elder_id,
+            "date": result.date,
+            "summary": result.summary,
+            "message": result.message,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"摘要接口异常: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"读取文件异常: {str(e)}",
+        )
 

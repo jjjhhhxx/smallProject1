@@ -39,6 +39,15 @@ PARSE_CONTEXT_ROOT: Path = Path(
     os.getenv("CONTEXT_ROOT", r"D:\project\store\context")
 ).resolve()
 
+# 摘要输出根目录
+# 优先读取环境变量 PARSE_SUMMARY_ROOT
+PARSE_SUMMARY_ROOT: Path = Path(
+    os.getenv("PARSE_SUMMARY_ROOT", r"D:\project\store\summary")
+).resolve()
+
+# 启动时确保摘要目录存在
+PARSE_SUMMARY_ROOT.mkdir(parents=True, exist_ok=True)
+
 
 # ========== 数据库配置 ==========
 
