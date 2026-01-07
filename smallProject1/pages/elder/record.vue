@@ -29,7 +29,7 @@
       v-if="elderId"
       style="margin-top: 28px; font-size: 16px; color: #666; text-align: center;"
     >
-      老人绑定码（elder_id）：<text style="font-weight: 700; font-size: 18px; color: #333;">{{ elderId }}</text>
+      绑定码（elder_id）：<text style="font-weight: 700; font-size: 18px; color: #333;">{{ elderId }}</text>
     </view>
   </view>
 </template>
@@ -37,7 +37,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://192.168.3.5:8000";
 
 const recording = ref(false);
 const uploading = ref(false);
@@ -52,13 +52,20 @@ onMounted(async () => {
   recorder = uni.getRecorderManager();
 
   recorder.onStop((res) => {
+    console.log("[recorder.onStop]", res);
+    if (!res?.tempFilePath) {
+      status.value = "录音文件为空";
+      uploading.value = false;
+      return;
+    }
     uploadAudio(res.tempFilePath);
   });
 
   recorder.onError(() => {
+    console.error("[recorder.onError]", err);
     recording.value = false;
     uploading.value = false;
-    status.value = "录音失败";
+    status.value = `录音失败：${err?.errMsg || "unknown"}`;
   });
 
   await ensureLoginToken();
@@ -118,7 +125,8 @@ async function ensureLoginToken() {
 
     return true;
   } catch (e) {
-    status.value = "录音失败";
+    console.error("[ensureLoginToken.fail]", e);
+    status.value = "登录失败";
     return false;
   }
 }
@@ -155,25 +163,31 @@ async function uploadAudio(filePath) {
   }
 
   uni.uploadFile({
-    url: `${API_BASE}/listen/upload`,
-    filePath,
-    name: "audio_file",
-    header: {
-      Authorization: `Bearer ${token.value}`,
-    },
-    success: (res) => {
-      uploading.value = false;
-      try {
-        const data = JSON.parse(res.data || "{}");
-        status.value = data && (data.record_id || data.ok === true) ? "录音完成" : "录音失败";
-      } catch (e) {
-        status.value = "录音失败";
-      }
-    },
-    fail: () => {
-      uploading.value = false;
-      status.value = "录音失败";
-    },
-  });
+  url: `${API_BASE}/listen/upload`,
+  filePath,
+  name: "audio_file",
+  header: { Authorization: `Bearer ${token.value}` },
+  success: (res) => {
+    console.log("[upload.success]", res.statusCode, res.data);
+    uploading.value = false;
+
+    if (res.statusCode !== 200) {
+      status.value = `上传失败(${res.statusCode})`;
+      return;
+    }
+
+    try {
+      const data = JSON.parse(res.data || "{}");
+      status.value = (data.record_id || data.ok === true) ? "录音完成" : `后端返回异常：${res.data}`;
+    } catch {
+      status.value = `后端返回非JSON：${String(res.data).slice(0, 120)}`;
+    }
+  },
+  fail: (err) => {
+    console.error("[upload.fail]", err);
+    uploading.value = false;
+    status.value = `上传失败：${err?.errMsg || "unknown"}`;
+  },
+});
 }
 </script>
