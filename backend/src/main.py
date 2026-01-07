@@ -6,15 +6,15 @@
 或者使用 --app-dir 参数:
     uvicorn main:app --reload --host 0.0.0.0 --port 8000 --app-dir src
 """
-
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from listen.api.auth_routes import auth_router
 from listen.api.routes import router as listen_router
 from parse.api.routes import router as parse_router
-from dotenv import load_dotenv
-load_dotenv()
+
 app = FastAPI(
     title="Listen API",
     description="语音录入模块 MVP",

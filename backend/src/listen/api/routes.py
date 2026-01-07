@@ -4,7 +4,7 @@
 通过依赖注入获取 application 层服务。
 """
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from db import get_db
@@ -14,6 +14,7 @@ from listen.applicaton.upload_service import (
     UploadServiceError,
     UploadValidationError,
 )
+from listen.api.deps import get_current_elder_id
 from listen.infra.listen_repository import ListenRecordRepository
 from listen.infra.local_storage import LocalAudioStorage
 from listen.interfaces.dtos import RecordsQueryResponse, UploadResponse
@@ -36,15 +37,15 @@ def get_query_service(db: Session = Depends(get_db)) -> QueryService:
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_audio(
-    elder_id: int = Form(..., gt=0, description="老人ID"),
     audio_file: UploadFile = File(..., description="音频文件"),
+    elder_id: int = Depends(get_current_elder_id),
     service: UploadService = Depends(get_upload_service),
 ) -> UploadResponse:
     """
     上传录音文件
 
-    - **elder_id**: 老人ID（必填，正整数）
     - **audio_file**: 音频文件（multipart/form-data，支持 wav/mp3/m4a/amr，最大 20MB）
+    - **Authorization**: Bearer <token>（从 /auth/wx/login 获取；仅老人端 ELDER 可调用）
 
     返回创建的记录信息。
     """
@@ -66,7 +67,7 @@ async def upload_audio(
         raise HTTPException(status_code=500, detail=str(e))
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"服务器内部错误: {e}")
+        raise HTTPException(status_code=500, detail="服务器内部错误")
 
 
 @router.get("/records", response_model=RecordsQueryResponse)
