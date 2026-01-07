@@ -251,10 +251,10 @@
 </head>
 <body>
     <div class="container">
-        <h1>老人摘要查看</h1>
+        <h1>信息查看</h1>
         
         <div class="input-group">
-            <label for="elderId">老人ID:</label>
+            <label for="elderId">elder_id:</label>
             <input type="number" id="elderId" min="1" placeholder="请输入老人ID" value="1">
         </div>
         
@@ -265,7 +265,7 @@
         
         <div class="button-group">
             <button onclick="getSummary()">查看摘要</button>
-            <button onclick="getSummary(true)">强制重新生成</button>
+            
             <button class="secondary" onclick="getRecords()">查看录音</button>
         </div>
         
@@ -359,6 +359,12 @@
             showLoading();
             
             try {
+                // 第一步：启动转写任务
+                updateLoadingText('正在转写音频，请稍候...');
+                await startAndWaitForTranscribe();
+                
+                // 第二步：生成摘要
+                updateLoadingText('正在生成摘要...');
                 const params = new URLSearchParams({
                     elder_id: elderId,
                     date: date,
@@ -387,6 +393,59 @@
             } finally {
                 hideLoading();
             }
+        }
+        
+        // 启动转写任务并等待完成
+        async function startAndWaitForTranscribe() {
+            // 先启动转写任务
+            const startResponse = await fetch(`${API_BASE}/parse/transcribe_all`);
+            const startData = await startResponse.json();
+            
+            // 如果任务已启动或正在运行，等待完成
+            if (startData.started || startData.message === 'already running') {
+                // 轮询等待转写完成
+                await waitForTranscribeComplete();
+            }
+        }
+        
+        // 轮询等待转写任务完成
+        async function waitForTranscribeComplete() {
+            const maxWaitTime = 300000; // 最长等待 5 分钟
+            const pollInterval = 2000;  // 每 2 秒检查一次
+            const startTime = Date.now();
+            
+            while (Date.now() - startTime < maxWaitTime) {
+                // 等待一段时间
+                await sleep(pollInterval);
+                
+                // 检查转写状态
+                const response = await fetch(`${API_BASE}/parse/transcribe_all`);
+                const data = await response.json();
+                
+                // 如果能成功启动新任务，说明上次任务已完成
+                if (data.started) {
+                    // 新任务启动了，但由于文件已存在会被跳过，很快就会完成
+                    // 再等一小段时间确保任务结束
+                    await sleep(1000);
+                    return;
+                }
+                
+                // 如果返回 already running，继续等待
+                updateLoadingText(`正在转写音频，请稍候... (已等待 ${Math.round((Date.now() - startTime) / 1000)} 秒)`);
+            }
+            
+            // 超时，但仍然尝试继续
+            console.warn('转写任务等待超时，继续生成摘要');
+        }
+        
+        // 睡眠函数
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        // 更新加载文字
+        function updateLoadingText(text) {
+            document.getElementById('loading').textContent = text;
         }
         
         async function getRecords() {
