@@ -53,3 +53,20 @@ PARSE_SUMMARY_ROOT.mkdir(parents=True, exist_ok=True)
 
 DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
 
+
+# ========== 微信小程序配置 ==========
+
+# 微信小程序 AppID
+WECHAT_APPID: str = os.getenv("WECHAT_APPID", "")
+
+# 微信小程序 AppSecret（注意：不要在日志中打印此值）
+WECHAT_APPSECRET: str = os.getenv("WECHAT_APPSECRET", "")
+
+
+# ========== JWT 配置 ==========
+
+# JWT 签名密钥（注意：生产环境务必设置强密钥）
+JWT_SECRET: str = os.getenv("JWT_SECRET", "")
+
+# JWT 过期时间（分钟），默认 43200 分钟 = 30 天
+JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "43200"))

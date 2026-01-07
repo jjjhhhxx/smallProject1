@@ -18,3 +18,8 @@ dashscope>=1.14.0
 # OpenAI Python SDK (用于调用 DashScope LLM)
 openai>=1.0.0
 
+# HTTP 客户端 (用于调用微信 API)
+requests>=2.31.0
+
+# JWT 签发 (用于认证)
+python-jose[cryptography]>=3.3.0

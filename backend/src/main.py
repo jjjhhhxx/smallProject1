@@ -10,9 +10,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from listen.api.auth_routes import auth_router
 from listen.api.routes import router as listen_router
 from parse.api.routes import router as parse_router
-
+from dotenv import load_dotenv
+load_dotenv()
 app = FastAPI(
     title="Listen API",
     description="语音录入模块 MVP",
@@ -29,6 +31,7 @@ app.add_middleware(
 )
 
 # 注册路由
+app.include_router(auth_router)  # /auth/* 认证相关路由
 app.include_router(listen_router)
 app.include_router(parse_router)
 
