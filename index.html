@@ -32,6 +32,12 @@
             border: 1px solid #ddd;
             border-radius: 5px;
             font-size: 16px;
+            box-sizing: border-box;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         button {
             background-color: #007bff;
@@ -41,7 +47,6 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
-            margin-right: 10px;
         }
         button:hover {
             background-color: #0056b3;
@@ -49,6 +54,12 @@
         button:disabled {
             background-color: #ccc;
             cursor: not-allowed;
+        }
+        button.secondary {
+            background-color: #28a745;
+        }
+        button.secondary:hover {
+            background-color: #1e7e34;
         }
         .result {
             margin-top: 30px;
@@ -83,6 +94,159 @@
             border-radius: 5px;
             border: 1px solid #f5c6cb;
         }
+        
+        /* 录音列表样式 */
+        .records-container {
+            margin-top: 30px;
+            display: none;
+        }
+        .records-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .records-header h2 {
+            margin: 0;
+            color: #333;
+        }
+        .records-close {
+            background-color: #6c757d;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        .records-close:hover {
+            background-color: #545b62;
+        }
+        .records-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .record-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            background-color: white;
+        }
+        .record-item:last-child {
+            border-bottom: none;
+        }
+        .record-item:hover {
+            background-color: #f8f9fa;
+        }
+        .record-info {
+            flex: 1;
+        }
+        .record-filename {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .record-date {
+            font-size: 12px;
+            color: #666;
+        }
+        .record-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .record-actions button {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+        .play-btn {
+            background-color: #17a2b8;
+        }
+        .play-btn:hover {
+            background-color: #138496;
+        }
+        .text-btn {
+            background-color: #ffc107;
+            color: #333;
+        }
+        .text-btn:hover {
+            background-color: #e0a800;
+        }
+        .text-btn:disabled {
+            background-color: #e9ecef;
+            color: #6c757d;
+        }
+        .no-records {
+            padding: 30px;
+            text-align: center;
+            color: #666;
+        }
+        
+        /* 音频播放器样式 */
+        .audio-player {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            display: none;
+        }
+        .audio-player audio {
+            width: 100%;
+        }
+        .audio-player .audio-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        /* 文本弹窗样式 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-header h3 {
+            margin: 0;
+            color: #333;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+        }
+        .modal-close:hover {
+            color: #333;
+        }
+        .modal-body {
+            line-height: 1.8;
+            color: #333;
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
@@ -99,8 +263,11 @@
             <input type="date" id="date" placeholder="请选择日期">
         </div>
         
-        <button onclick="getSummary()">查看摘要</button>
-        <button onclick="getSummary(true)">强制重新生成</button>
+        <div class="button-group">
+            <button onclick="getSummary()">查看摘要</button>
+            <button onclick="getSummary(true)">强制重新生成</button>
+            <button class="secondary" onclick="getRecords()">查看录音</button>
+        </div>
         
         <div id="result" class="result">
             <div class="result-section">
@@ -124,14 +291,51 @@
             </div>
         </div>
         
+        <!-- 录音列表 -->
+        <div id="recordsContainer" class="records-container">
+            <div class="records-header">
+                <h2>录音列表 (<span id="recordsCount">0</span>条)</h2>
+                <button class="records-close" onclick="closeRecords()">关闭</button>
+            </div>
+            
+            <!-- 音频播放器 -->
+            <div id="audioPlayer" class="audio-player">
+                <div class="audio-title" id="audioTitle">正在播放：</div>
+                <audio id="audioElement" controls></audio>
+            </div>
+            
+            <div id="recordsList" class="records-list">
+                <!-- 录音列表项将动态插入 -->
+            </div>
+        </div>
+        
         <div id="loading" class="loading" style="display: none;">
-            正在获取摘要...
+            正在获取数据...
         </div>
         
         <div id="error" class="error" style="display: none;"></div>
     </div>
+    
+    <!-- 文本弹窗 -->
+    <div id="textModal" class="modal-overlay" onclick="closeTextModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modalTitle">录音文本</h3>
+                <button class="modal-close" onclick="closeTextModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- 文本内容将动态插入 -->
+            </div>
+        </div>
+    </div>
 
     <script>
+        // API 基础地址
+        const API_BASE = 'http://127.0.0.1:8000';
+        
+        // 当前老人ID（用于录音列表）
+        let currentElderId = null;
+        
         // 设置默认日期为今天
         document.getElementById('date').valueAsDate = new Date();
         
@@ -150,6 +354,7 @@
             }
             
             hideResult();
+            hideRecords();
             hideError();
             showLoading();
             
@@ -160,7 +365,7 @@
                     force: force
                 });
                 
-                const response = await fetch(`http://127.0.0.1:8000/parse/summary?${params}`);
+                const response = await fetch(`${API_BASE}/parse/summary?${params}`);
                 
                 if (!response.ok) {
                     const errorData = await response.json();
@@ -184,12 +389,159 @@
             }
         }
         
+        async function getRecords() {
+            const elderId = document.getElementById('elderId').value;
+            
+            if (!elderId) {
+                showError('请填写老人ID');
+                return;
+            }
+            
+            if (elderId <= 0) {
+                showError('老人ID必须是正整数');
+                return;
+            }
+            
+            currentElderId = elderId;
+            
+            hideResult();
+            hideRecords();
+            hideError();
+            showLoading();
+            
+            try {
+                const params = new URLSearchParams({
+                    elder_id: elderId
+                });
+                
+                const response = await fetch(`${API_BASE}/parse/records?${params}`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                renderRecordsList(data.records);
+                document.getElementById('recordsCount').textContent = data.total;
+                showRecords();
+                
+            } catch (error) {
+                showError('获取录音列表失败: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        function renderRecordsList(records) {
+            const listContainer = document.getElementById('recordsList');
+            
+            if (!records || records.length === 0) {
+                listContainer.innerHTML = '<div class="no-records">暂无录音记录</div>';
+                return;
+            }
+            
+            let html = '';
+            records.forEach(record => {
+                html += `
+                    <div class="record-item">
+                        <div class="record-info">
+                            <div class="record-filename">${escapeHtml(record.filename)}</div>
+                            <div class="record-date">日期：${escapeHtml(record.date)}</div>
+                        </div>
+                        <div class="record-actions">
+                            <button class="play-btn" onclick="playAudio('${escapeAttr(record.id)}', '${escapeAttr(record.filename)}')">
+                                播放
+                            </button>
+                            <button class="text-btn" onclick="showText('${escapeAttr(record.id)}', '${escapeAttr(record.filename)}')" ${!record.has_text ? 'disabled title="暂无文本"' : ''}>
+                                查看文本
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            listContainer.innerHTML = html;
+        }
+        
+        function playAudio(recordId, filename) {
+            const audioPlayer = document.getElementById('audioPlayer');
+            const audioElement = document.getElementById('audioElement');
+            const audioTitle = document.getElementById('audioTitle');
+            
+            // 构建音频URL
+            const audioUrl = `${API_BASE}/parse/records/${currentElderId}/${recordId}/audio`;
+            
+            audioTitle.textContent = `正在播放：${filename}`;
+            audioElement.src = audioUrl;
+            audioPlayer.style.display = 'block';
+            
+            // 自动播放
+            audioElement.play().catch(e => {
+                console.log('自动播放被阻止，请手动点击播放按钮');
+            });
+        }
+        
+        async function showText(recordId, filename) {
+            const modal = document.getElementById('textModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+            
+            modalTitle.textContent = `录音文本：${filename}`;
+            modalBody.textContent = '加载中...';
+            modal.style.display = 'flex';
+            
+            try {
+                const response = await fetch(`${API_BASE}/parse/records/${currentElderId}/${recordId}/text`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.found && data.text) {
+                    modalBody.textContent = data.text;
+                } else {
+                    modalBody.textContent = '暂无文本内容';
+                }
+                
+            } catch (error) {
+                modalBody.textContent = '获取文本失败: ' + error.message;
+            }
+        }
+        
+        function closeTextModal(event) {
+            if (event && event.target !== event.currentTarget) {
+                return;
+            }
+            document.getElementById('textModal').style.display = 'none';
+        }
+        
         function showResult() {
             document.getElementById('result').style.display = 'block';
         }
         
         function hideResult() {
             document.getElementById('result').style.display = 'none';
+        }
+        
+        function showRecords() {
+            document.getElementById('recordsContainer').style.display = 'block';
+        }
+        
+        function hideRecords() {
+            document.getElementById('recordsContainer').style.display = 'none';
+            document.getElementById('audioPlayer').style.display = 'none';
+            const audioElement = document.getElementById('audioElement');
+            audioElement.pause();
+            audioElement.src = '';
+        }
+        
+        function closeRecords() {
+            hideRecords();
         }
         
         function showLoading() {
@@ -210,6 +562,18 @@
             document.getElementById('error').style.display = 'none';
         }
         
+        // HTML转义函数，防止XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 属性值转义函数
+        function escapeAttr(text) {
+            return text.replace(/'/g, "\\'").replace(/"/g, '\\"');
+        }
+        
         // 回车键触发查询
         document.getElementById('elderId').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
@@ -220,6 +584,13 @@
         document.getElementById('date').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 getSummary();
+            }
+        });
+        
+        // ESC键关闭弹窗
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeTextModal();
             }
         });
     </script>

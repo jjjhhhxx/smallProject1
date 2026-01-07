@@ -1,7 +1,5 @@
 <template>
   <view style="padding: 24px;">
-    <!-- 去掉“老人录音”标题 -->
-
     <button
       type="primary"
       :disabled="uploading"
@@ -19,26 +17,34 @@
       {{ recording ? "松开结束" : "按住录音" }}
     </button>
 
-    <!-- 松开后只显示两种结果：录音完成 / 录音失败 -->
-    <view v-if="status" style="margin-top: 20px; font-size: 22px; font-weight: 700; text-align: center;">
-  {{ status }}
-</view>
+    <view
+      v-if="status"
+      style="margin-top: 20px; font-size: 22px; font-weight: 700; text-align: center;"
+    >
+      {{ status }}
+    </view>
 
+    <!-- ✅ 页面底部显示 elder_id -->
+    <view
+      v-if="elderId"
+      style="margin-top: 28px; font-size: 16px; color: #666; text-align: center;"
+    >
+      老人绑定码（elder_id）：<text style="font-weight: 700; font-size: 18px; color: #333;">{{ elderId }}</text>
+    </view>
   </view>
 </template>
+
 <script setup>
 import { ref, onMounted } from "vue";
 
-// ⚠️ 真机/上线必须换成 https 域名，并配置小程序合法域名
 const API_BASE = "http://localhost:8000";
 
-// 录音与页面状态
 const recording = ref(false);
 const uploading = ref(false);
 const status = ref("");
 
-// ✅ 关键：token（用它来识别是哪个老人）
 const token = ref("");
+const elderId = ref(""); // ✅ 新增：用于页面展示
 
 let recorder = null;
 
@@ -55,18 +61,17 @@ onMounted(async () => {
     status.value = "录音失败";
   });
 
-  // ✅ 启动时先确保已登录拿到 token
   await ensureLoginToken();
 });
 
-/** 确保本地有 token；没有就走 uni.login -> 后端换 token */
 async function ensureLoginToken() {
   // 1) 先读本地缓存
-  const cached = uni.getStorageSync("elder_token");
-  if (cached) {
-    token.value = cached;
-    return true;
-  }
+  const cachedToken = uni.getStorageSync("elder_token");
+  const cachedElderId = uni.getStorageSync("elder_id");
+  if (cachedToken) token.value = cachedToken;
+  if (cachedElderId) elderId.value = String(cachedElderId);
+
+  if (cachedToken && cachedElderId) return true;
 
   // 2) 没有缓存：走微信登录
   try {
@@ -80,14 +85,14 @@ async function ensureLoginToken() {
 
     if (!loginRes.code) throw new Error("no code");
 
-    // 3) 拿 code 去后端换 token
+    // 3) 拿 code 去后端换 token（✅ role 建议用大写）
     const resp = await new Promise((resolve, reject) => {
       uni.request({
         url: `${API_BASE}/auth/wx/login`,
         method: "POST",
         data: {
           code: loginRes.code,
-          role: "elder", // 可选：让后端区分老人/子女
+          role: "ELDER",
         },
         success: resolve,
         fail: reject,
@@ -97,12 +102,22 @@ async function ensureLoginToken() {
     const data = resp.data || {};
     if (!data.token) throw new Error("no token in response");
 
+    // ✅ 保存 token
     token.value = data.token;
     uni.setStorageSync("elder_token", token.value);
 
+    // ✅ 保存 elder_id（后端返回 elder_id=user_id）
+    if (data.elder_id) {
+      elderId.value = String(data.elder_id);
+      uni.setStorageSync("elder_id", elderId.value);
+    } else if (data.user_id) {
+      // 兜底：如果后端没返回 elder_id，就用 user_id 当 elder_id
+      elderId.value = String(data.user_id);
+      uni.setStorageSync("elder_id", elderId.value);
+    }
+
     return true;
   } catch (e) {
-    // 登录失败：后续上传也会失败
     status.value = "录音失败";
     return false;
   }
@@ -132,7 +147,6 @@ function stopRecord() {
 async function uploadAudio(filePath) {
   uploading.value = true;
 
-  // ✅ 上传前再兜底一次：确保 token 存在（防止缓存被清）
   const ok = await ensureLoginToken();
   if (!ok) {
     uploading.value = false;
@@ -144,20 +158,13 @@ async function uploadAudio(filePath) {
     url: `${API_BASE}/listen/upload`,
     filePath,
     name: "audio_file",
-
-    // ✅ 关键：带 token 给后端识别老人身份
     header: {
       Authorization: `Bearer ${token.value}`,
     },
-
-    // ✅ 方案A：不再传 elder_id（避免伪造）
-    // formData: {},
-
     success: (res) => {
       uploading.value = false;
       try {
         const data = JSON.parse(res.data || "{}");
-        // 你原来的判定逻辑保留
         status.value = data && (data.record_id || data.ok === true) ? "录音完成" : "录音失败";
       } catch (e) {
         status.value = "录音失败";

@@ -1,18 +1,19 @@
 {
 	"pages": [ 
 		{
-  "path": "pages/login_test/login_test",
-  "style": {
-    "navigationBarTitleText": "登录测试"
-  }
-},
-
-	{
 			"path": "pages/elder/record",
 			"style": {
 			  "navigationBarTitleText": ""
 			}
 		},
+		{
+			"path": "pages/login_test/login_test",
+			"style": {
+				"navigationBarTitleText": "登录测试"
+			}
+			},
+
+		
 		
 		
 		{
