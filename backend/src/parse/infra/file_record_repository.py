@@ -168,3 +168,34 @@ class FileSystemRecordRepository(RecordRepositoryInterface):
                 text="",
                 found=False,
             )
+    
+    def save_record_text(self, elder_id: int, record_id: str, text: str) -> bool:
+        """
+        保存指定录音的转写文本
+        
+        record_id 格式: {date}/{filename_without_ext}
+        """
+        try:
+            parts = record_id.split("/", 1)
+            if len(parts) != 2:
+                logger.warning(f"无效的 record_id 格式: {record_id}")
+                return False
+            
+            date_str, filename_without_ext = parts
+            
+            # 构建文本文件路径
+            text_dir = self._context_root / str(elder_id) / date_str
+            text_path = text_dir / f"{filename_without_ext}.txt"
+            
+            # 确保目录存在
+            text_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 写入文本文件
+            text_path.write_text(text, encoding="utf-8")
+            
+            logger.info(f"文本已保存: {text_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"保存录音文本失败: {e}")
+            return False

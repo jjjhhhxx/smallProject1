@@ -352,19 +352,41 @@ async def get_record_text(
     """
     获取指定录音的转写文本
     
+    如果文本不存在，会自动触发转写后返回。
+    
     Args:
         elder_id: 老人 ID
         record_id: 录音 ID（格式: {date}/{filename_without_ext}）
         
     Returns:
         RecordTextResponse: 录音文本
+        
+    Raises:
+        400: 参数校验失败
+        404: 音频文件不存在
+        502: ASR 转写失败
+        500: 其他异常
     """
     if elder_id <= 0:
         raise HTTPException(status_code=400, detail="老人ID必须是正整数")
     
     try:
+        # 创建 ASR 服务
+        asr = DashScopeASR()
+        
+        # 获取录音服务
         service = _get_record_service()
-        result = service.get_record_text(elder_id, record_id)
+        
+        # 获取或转写文本
+        result, error = service.get_or_transcribe_text(elder_id, record_id, asr)
+        
+        if error:
+            # 根据错误类型返回不同状态码
+            if "音频文件不存在" in error:
+                raise HTTPException(status_code=404, detail=error)
+            else:
+                # ASR 转写失败
+                raise HTTPException(status_code=502, detail=f"转写失败: {error}")
         
         return {
             "elder_id": result.elder_id,
@@ -373,6 +395,8 @@ async def get_record_text(
             "found": result.found,
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"获取录音文本异常: {e}")
         raise HTTPException(

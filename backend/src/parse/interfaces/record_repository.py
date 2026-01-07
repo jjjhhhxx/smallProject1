@@ -53,3 +53,18 @@ class RecordRepositoryInterface(ABC):
             RecordTextResult: 录音文本结果
         """
         pass
+    
+    @abstractmethod
+    def save_record_text(self, elder_id: int, record_id: str, text: str) -> bool:
+        """
+        保存指定录音的转写文本
+        
+        Args:
+            elder_id: 老人 ID
+            record_id: 录音 ID（格式: {date}/{filename_without_ext}）
+            text: 转写文本内容
+            
+        Returns:
+            bool: 保存是否成功
+        """
+        pass
