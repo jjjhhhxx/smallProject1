@@ -247,6 +247,47 @@
             color: #333;
             white-space: pre-wrap;
         }
+        /* 更平滑的响应式：字号、间距随屏幕变化 */
+h1 { font-size: clamp(20px, 4.5vw, 28px); }
+.result-section h3 { font-size: clamp(16px, 3.8vw, 18px); }
+
+/* 给 iPhone 刘海/底部手势条留安全区（可选，但推荐） */
+body {
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+/* 关键：小屏布局调整 */
+@media (max-width: 600px) {
+  body { margin: 0; }
+  .container { padding: 16px; border-radius: 12px; }
+
+  /* 按钮改成一列，手指更好点 */
+  .button-group { flex-direction: column; }
+  .button-group button { width: 100%; }
+
+  /* 录音列表：一条记录改为上下布局，防挤压 */
+  .record-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .record-actions {
+    width: 100%;
+  }
+  .record-actions button {
+    flex: 1;
+    width: 48%;
+  }
+
+  /* 列表高度用视口高度更合理 */
+  .records-list { max-height: 60vh; }
+
+  /* 弹窗在小屏更紧凑 */
+  .modal-content { padding: 18px; width: 94%; max-height: 85vh; }
+}
     </style>
 </head>
 <body>
@@ -331,7 +372,8 @@
 
     <script>
         // API 基础地址
-        const API_BASE = 'http://127.0.0.1:8000';
+        const API_BASE = 'https://xixixi.asia';
+
         
         // 当前老人ID（用于录音列表）
         let currentElderId = null;

@@ -37,7 +37,8 @@
 <script setup>
 import { ref, onMounted } from "vue";
 
-const API_BASE = "http://192.168.3.5:8000";
+const API_BASE = "https://xixixi.asia";
+
 
 const recording = ref(false);
 const uploading = ref(false);
@@ -61,7 +62,7 @@ onMounted(async () => {
     uploadAudio(res.tempFilePath);
   });
 
-  recorder.onError(() => {
+  recorder.onError((err) => {
     console.error("[recorder.onError]", err);
     recording.value = false;
     uploading.value = false;
