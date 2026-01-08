@@ -45,6 +45,8 @@ htmlcov/
 # dotenv / secrets
 .env
 .env.*
+**/.env
+**/.env.*
 *.pem
 *.key
 

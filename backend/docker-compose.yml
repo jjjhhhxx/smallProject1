@@ -3,16 +3,16 @@ services:
     image: mysql:8.0
     container_name: my-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: app
-      MYSQL_USER: appuser
-      MYSQL_PASSWORD: apppass
-      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - dbdata:/var/lib/mysql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -21,15 +21,18 @@ services:
     build: .
     container_name: my-backend
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - .env
     environment:
-      # 你项目里如果用的是 SQLAlchemy，通常就是这个格式（确保 requirements.txt 里有 pymysql）
-      DATABASE_URL: "mysql+pymysql://appuser:apppass@db:3306/app?charset=utf8mb4"
-      TZ: Asia/Shanghai
+      # 这里保留非敏感/可覆盖项（也可以全部放 .env）
+      TZ: ${TZ:-Asia/Shanghai}
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
+    volumes:
+      - ${HOST_STORE_DIR:-./data/store}:/data/store
 
 volumes:
   dbdata:
